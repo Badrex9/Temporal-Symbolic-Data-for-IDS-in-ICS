@@ -8,7 +8,7 @@ Implementation of a temporal-symbolic representation with adaptive pooling for i
 Temporal_symbolic_data/
 │
 ├── cicids_models/                 
-│   # Trained models on CICIDS2017 (weights, checkpoints, results)
+│   # Trained models on CICIDS2017 (weights, checkpoints)
 │
 ├── swat_model/                    
 │   # Trained models on the SWaT industrial dataset
