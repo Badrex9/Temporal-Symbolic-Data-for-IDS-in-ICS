@@ -1,2 +1,3 @@
-X_input_split_train_smote/
-X_input_split_test/
+preprocessed_cicids/
+preprocessed_swat_unsup/
+preprocessed_wadi_unsup/
