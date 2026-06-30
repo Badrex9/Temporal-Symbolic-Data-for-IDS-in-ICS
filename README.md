@@ -2,7 +2,7 @@
 
 > **Enzo Zamaï, David Espes, Audrey C. Therrien, Catherine Dezan**
 > Université de Bretagne Occidentale, Brest, France — Université de Sherbrooke, Canada
-> *Computer Networks* (under review)
+> *Computer & Security* (under review)
 
 ---
 
