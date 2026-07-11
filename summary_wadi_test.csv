@@ -1,0 +1,3 @@
+dataset,pooling,d_hist,params,precision,recall,f1,f1_pa,roc_auc
+wadi,weightedpool,5,168459,32.272,24.6868,27.9743,75.5413,67.9289
+wadi,maskguided,5,169613,25.9684,10.885,15.3401,82.5743,66.3714
