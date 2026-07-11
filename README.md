@@ -2,7 +2,7 @@
 
 > **Enzo Zamaï, David Espes, Audrey C. Therrien, Catherine Dezan**
 > Université de Bretagne Occidentale, Brest, France — Université de Sherbrooke, Canada
-> *Computer & Security* (under review)
+> *Computers & Security* (under review)
 
 ---
 
@@ -13,6 +13,8 @@ This repository contains the official implementation of the temporal-symbolic ID
 The same architectural principle operates across both ICS layers within a single framework:
 - **IT layer** — supervised multiclass classification on CICIDS2017 network flows
 - **OT layer** — unsupervised next-step prediction on SWaT and WADI sensor time series
+
+This repository also includes our reproduction of the two strongest OT baselines, **GTA** and **DuoGAT**, retrained and re-evaluated on our own preprocessing pipeline under a fully harmonized protocol (see [Reproducing GTA and DuoGAT](#reproducing-gta-and-duogat-baselines) below).
 
 ---
 
@@ -28,12 +30,19 @@ The same architectural principle operates across both ICS layers within a single
 ├── train_ot_unsup.py             # Training script — OT unsupervised (all configs)
 ├── test_ot_unsup.py              # Evaluation script — OT (F1_PA, AUC-ROC)
 │
-├── benchmark_server.py           # Latency benchmark — GPU + CPU (training server)
-├── benchmark_arm.py              # Latency benchmark — ARM Cortex-A72 (AWS Graviton2)
+├── benchmark_server.py           # Latency benchmark (ours) — GPU + CPU (training server)
+├── benchmark_arm.py              # Latency benchmark (ours) — ARM Cortex-A72 (AWS Graviton2)
+├── bench_duogat.py               # Latency/RAM benchmark — DuoGAT, ARM Cortex-A72
+├── bench_duogat_gpu.py           # Latency benchmark — DuoGAT, GPU + CPU (training server)
+├── bench_gta.py                  # Latency/RAM benchmark — GTA, ARM Cortex-A72
+├── bench_gta_gpu.py              # Latency benchmark — GTA, GPU + CPU (training server)
 │
-├── cicids_pooling/               # Saved CICIDS2017 models (.pth)
-├── swat_unsup_models/            # Saved SWaT models (.pth)
-├── wadi_unsup_models/            # Saved WADI models (.pth)
+├── duogat/                       # DuoGAT reproduction (see Reproducing GTA and DuoGAT)
+├── gta/                          # GTA reproduction (see Reproducing GTA and DuoGAT)
+│
+├── cicids_pooling/                # Saved CICIDS2017 models (.pth)
+├── swat_unsup_models/             # Saved SWaT models (.pth)
+├── wadi_unsup_models/             # Saved WADI models (.pth)
 │
 ├── preprocessed_cicids/          # Preprocessed CICIDS2017 numpy arrays
 ├── preprocessed_swat_unsup/      # Preprocessed SWaT numpy arrays
@@ -48,7 +57,7 @@ The same architectural principle operates across both ICS layers within a single
 pip install torch numpy pandas scikit-learn tqdm thop
 ```
 
-Tested with Python 3.10, PyTorch 2.11 (CUDA 13.0). No other dependencies are required.
+Tested with Python 3.10, PyTorch 2.11 (CUDA 13.0). No other dependencies are required for our own model. The `duogat/` and `gta/` reproductions have their own additional dependencies — see their respective sections below.
 
 ---
 
@@ -134,7 +143,7 @@ python test_ot_unsup.py --dataset wadi
 python benchmark_server.py
 ```
 
-**ARM Cortex-A72 (AWS Graviton2 / Raspberry Pi 4):**
+**ARM Cortex-A72 (AWS Graviton2 / Raspberry Pi 4-class estimate):**
 ```bash
 python benchmark_arm.py
 ```
@@ -170,7 +179,43 @@ The model consists of three temporal 1D convolutional layers, two mask-guided po
 
 **CICIDS2017** — stratified random split (70% train / 30% test, `random_state=843`), class-weighted cross-entropy loss (weights ∝ 1/√frequency), 100 epochs with early stopping on validation F1 (patience 15 epochs). Heartbleed and Infiltration classes are excluded from the global F1 computation due to insufficient test samples (3 and 11 respectively).
 
-**SWaT / WADI** — unsupervised protocol: models are trained exclusively on the normal operation period and evaluated on the attack period. Anomaly scores are derived from per-feature squared prediction errors (top-10% features). Detection threshold set at the 99th percentile of training scores. Performance is reported using the point-adjust protocol (F1_PA), consistent with standard practice in the ICS anomaly detection literature.
+**SWaT / WADI** — unsupervised protocol: models are trained exclusively on the normal operation period and evaluated on the attack period, under a strictly chronological train/test separation. The anomaly score is the mean squared forecasting error averaged over all features, with no additional per-split standardization. The detection threshold is fixed at the 99th percentile of anomaly scores computed on the normal training data. Performance is reported using the point-adjust protocol (F1_PA) alongside AUC-ROC, consistent with standard practice in the ICS anomaly detection literature.
+
+**GTA and DuoGAT reproductions** use the exact same anomaly score definition and the exact same 99th-percentile thresholding rule as our own model, rather than the method-specific exhaustive grid search over the labeled test set used in their original papers, which is not representative of a deployable detection procedure since it requires test-time attack labels that are not available in practice. DuoGAT's official training pipeline draws its internal train/validation split uniformly at random from overlapping sliding windows; we replace it with a chronological 70/30 split, better suited to time-series data and avoiding the risk of near-duplicate windows leaking across the split. GTA's official implementation already partitions data chronologically by construction. Results were verified stable across repeated training runs with different random seeds. See `duogat/README.md` and `gta/README.md` for full reproduction details.
+
+---
+
+## Reproducing GTA and DuoGAT baselines
+
+We reproduce **GTA**~[[Chen et al., 2021]](https://github.com/zackchen-lb/GTA) and **DuoGAT**~[[Lee et al., 2023]](https://github.com/ByeongtaePark/DuoGAT) because they report among the strongest published OT detection results on SWaT and WADI, and therefore constitute the most relevant competitors for assessing the proposed model. The remaining OT baselines discussed in the paper (OmniAnomaly, USAD, GDN, DE-CNN) are reported from their published results rather than reproduced, since their published detection performance is already lower than that of GTA and DuoGAT.
+
+The `duogat/` and `gta/` directories each contain a modified copy of the corresponding official implementation, adapted to (1) load our own preprocessed SWaT/WADI data, (2) fix a small number of library-compatibility issues unrelated to our contribution, and (3) evaluate under the harmonized protocol described above. Original licenses apply in both directories — see each subdirectory's `LICENSE` file, and please cite the original papers if you use this code.
+
+**DuoGAT** (`duogat/`):
+```bash
+cd duogat
+python train_eval_duogat_pct.py --dataset SWAT --epochs 30 --lookback 5  --our_data_dir ../preprocessed_swat_unsup/
+python train_eval_duogat_pct.py --dataset WADI --epochs 30 --lookback 50 --our_data_dir ../preprocessed_wadi_unsup/
+```
+See `duogat/README.md` for the full list of changes applied to the official repository (chronological train/validation split, harmonized anomaly score and threshold, minor CUDA/CPU device-handling fix).
+
+**GTA** (`gta/`):
+```bash
+cd gta
+python prepare_gta_data.py \
+    --swat_normal ../dataset/SWaT_Dataset_Normal_v1.csv \
+    --swat_attack ../dataset/SWaT_Dataset_Attack_v0.csv \
+    --wadi_normal ../dataset/WADI_14days.csv \
+    --wadi_attack ../dataset/WADI_attackdataLABLE.csv \
+    --out_dir ./gta_data/ --downsample 10
+
+python run_gta_train_eval.py --dataset swat --data_dir ./gta_data/
+python run_gta_train_eval.py --dataset wadi --data_dir ./gta_data/
+
+python compute_auroc_gta_v2.py --dataset swat --data_dir ./gta_data/ --setting gta_SWaT_sl60_ll30_pl24
+python compute_auroc_gta_v2.py --dataset wadi --data_dir ./gta_data/ --setting gta_WADI_sl60_ll30_pl24
+```
+See `gta/README.md` for the full list of changes applied to the official repository (pandas/numpy compatibility fixes, a naming bug fix, and the harmonized anomaly score/threshold evaluation script).
 
 ---
 
@@ -184,28 +229,57 @@ The model consists of three temporal 1D convolutional layers, two mask-guided po
 | Sun et al. — CNN+LSTM | — | — |
 | **Ours — maskguided, d=10** | **99.77** | **74k** |
 
-**SWaT and WADI** (F1_PA, point-adjust protocol):
+**SWaT** (AUC-ROC and F1_PA, point-adjust protocol; GTA and DuoGAT results are our own reproduction under the harmonized 99th-percentile threshold protocol described above):
 
-| Method | SWaT F1_PA | WADI F1_PA | Params |
+| Method | AUC-ROC | F1_PA | Params |
 |---|---|---|---|
-| OmniAnomaly | 0.78 | 0.23 | — |
-| USAD | 0.85 | 0.43 | 3.9M |
-| GDN | 0.81 | 0.57 | 5k–20k |
-| DE-CNN | 0.87 | 0.72 | 35k–283k |
-| GTA | 0.91 | 0.84 | — |
-| DuoGAT | 0.9366 | 0.7380 | 170k–224k |
-| **Ours — maskguided** | **0.9153** | **0.8257** | **91–170k** |
+| OmniAnomaly | — | 0.78 | — |
+| USAD | — | 0.85 | 3.9M |
+| GDN | — | 0.81 | 5k |
+| DE-CNN | — | 0.87 | 35,836 |
+| GTA | 0.7902 | 0.6097 | 832,407 |
+| DuoGAT | 0.8597 | 0.8809 | 170,384 |
+| **Ours — maskguided, d=10** | **0.8743** | **0.9153** | **91,221** |
+
+**WADI** (AUC-ROC and F1_PA, point-adjust protocol; GTA and DuoGAT results are our own reproduction under the harmonized 99th-percentile threshold protocol described above):
+
+| Method | AUC-ROC | F1_PA | Params |
+|---|---|---|---|
+| OmniAnomaly | — | 0.23 | — |
+| USAD | — | 0.43 | 3.9M |
+| GDN | — | 0.57 | 20k |
+| DE-CNN | — | 0.72 | 283,391 |
+| GTA | 0.5995 | 0.4697 | 1,086,716 |
+| DuoGAT | **0.7356** | 0.7574 | 224,264 |
+| **Ours — maskguided, d=5** | 0.6637 | **0.8257** | **169,613** |
+
+Under this harmonized protocol, our model achieves the best F1_PA on both SWaT and WADI among the three reproduced deep-learning-based methods, DuoGAT achieves the best AUC-ROC on WADI, and GTA — despite reporting among the strongest results in its original paper under a test-set grid-search threshold — performs considerably worse than both other methods once evaluated under a common, deployment-realistic thresholding rule.
 
 ---
 
 ## Deployment
 
-All configurations were benchmarked at batch size 1 on a server workstation (Intel Core Ultra 7 265, NVIDIA RTX 4000 SFF Ada) and on an AWS Graviton2 instance (`t4g.micro`, ARM Cortex-A72 @ 2.5 GHz), which is microarchitecturally identical to the Broadcom BCM2711 of the Raspberry Pi 4. RPi4 throughput estimates are obtained by scaling Graviton2 measurements by the frequency ratio ×0.72 (2.5 GHz → 1.8 GHz).
+All configurations were benchmarked at batch size 1 on a server workstation (Intel Core Ultra 7 265, NVIDIA RTX 4000 SFF Ada) and on an AWS Graviton2 instance (`t4g.micro`, ARM Cortex-A72 @ 2.5 GHz), which is microarchitecturally identical to the Broadcom BCM2711 of the Raspberry Pi 4. Raspberry Pi 4-class throughput estimates are obtained by scaling the measured Graviton2 throughput by the clock frequency ratio ×0.72 (2.5 GHz → 1.8 GHz); these are estimates derived from direct ARM CPU-class measurements, not direct Raspberry Pi 4 measurements.
 
-| Dataset | GPU (inf/s) | CPU (inf/s) | RPi4 est. (inf/s) | Constraint | Margin |
+**Ours:**
+
+| Dataset | GPU (inf/s) | CPU (inf/s) | RPi4-class est. (inf/s) | Constraint | Margin |
 |---|---|---|---|---|---|
 | CICIDS2017 | 1,332 | 1,356 | ~420 | 25 flows/s | ×16.8 |
 | SWaT | 1,073 | 1,144 | ~374 | 1 Hz | ×374 |
 | WADI | 1,212 | 958 | ~366 | 1 Hz | ×366 |
 
-Runtime memory on Cortex-A72 (full Python/PyTorch process): ~257–258 MB, within the 1 GB RAM of the Raspberry Pi 4 B.
+**Comparison with GTA and DuoGAT on SWaT / WADI** (official public implementations, same measurement protocol):
+
+| Dataset | Method | Params | MACs/inf | RPi4-class est. (inf/s) | Margin |
+|---|---|---|---|---|---|
+| SWaT | GTA | 832,407 | 44,739,040 | ~35.2 | ×35.2 |
+| SWaT | DuoGAT | 170,384 | 1,685,890 | ~169.7 | ×169.7 |
+| SWaT | **Ours** | **91,221** | **278,656** | **~374** | **×374** |
+| WADI | GTA | 1,086,716 | 90,784,768 | ~24.2 | ×24.2 |
+| WADI | DuoGAT | 224,264 | 412,382,350 | ~15.6 | ×15.6 |
+| WADI | **Ours** | **169,613** | **466,816** | **~366** | **×366** |
+
+DuoGAT's MACs/inference on WADI (412.4 MMACs) is driven by its window size of 50 timesteps combined with the quadratic cost of its attention mechanism over node pairs, compared with 466.8 KMACs for the proposed model, whose cost scales with window size and feature count rather than their product or square.
+
+Runtime memory on Cortex-A72 (full Python/PyTorch process) is ~257–258 MB for our model, well within the 1 GB RAM of the Raspberry Pi 4 B; see `bench_duogat.py` / `bench_gta.py` for the corresponding measurements on the baselines.
